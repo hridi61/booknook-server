@@ -3,6 +3,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { MongoClient, ObjectId } from "mongodb";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 const app = express();
 
@@ -15,6 +16,45 @@ const db = client.db("booknook");
 
 const books = db.collection("books");
 const borrows = db.collection("borrows");
+
+// JWT Verification Middleware
+let JWKS;
+
+const verifyToken = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).send({
+        message: "Unauthorized access",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    if (!process.env.AUTH_JWKS_URL) {
+      return res.status(503).send({
+        message: "Authentication is not configured yet",
+      });
+    }
+
+    if (!JWKS) {
+      JWKS = createRemoteJWKSet(
+        new URL(process.env.AUTH_JWKS_URL)
+      );
+    }
+
+    const { payload } = await jwtVerify(token, JWKS);
+
+    req.user = payload;
+
+    next();
+  } catch (error) {
+    res.status(401).send({
+      message: "Invalid or expired token",
+    });
+  }
+};
 
 // Get all books
 app.get("/books", async (req, res) => {
@@ -42,7 +82,7 @@ app.get("/books", async (req, res) => {
 });
 
 // Get a single book by ID
-app.get("/books/:id", async (req, res) => {
+app.get("/books/:id", verifyToken, async (req, res) => {
   try {
     const id = req.params.id;
 
@@ -72,7 +112,7 @@ app.get("/books/:id", async (req, res) => {
 });
 
 // Add a new book
-app.post("/books", async (req, res) => {
+app.post("/books", verifyToken, async (req, res) => {
   try {
     const newBook = req.body;
 
