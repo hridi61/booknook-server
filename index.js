@@ -114,7 +114,7 @@ app.get("/books/:id", verifyToken, async (req, res) => {
 // Add a new book
 app.post("/books", verifyToken, async (req, res) => {
   try {
-    const newBook = req.body;
+    newBook.addedBy = req.user.email;
 
     if (!newBook || Object.keys(newBook).length === 0) {
       return res.status(400).send({
@@ -135,6 +135,98 @@ app.post("/books", verifyToken, async (req, res) => {
     });
   }
 });
+
+
+// Update a book (Owner only)
+app.patch("/books/:id", verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid book ID",
+      });
+    }
+
+    const book = await books.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!book) {
+      return res.status(404).send({
+        message: "Book not found",
+      });
+    }
+
+    if (book.addedBy !== req.user.email) {
+      return res.status(403).send({
+        message: "You are not the owner of this book",
+      });
+    }
+
+    const updatedData = { ...req.body };
+
+    delete updatedData._id;
+    delete updatedData.addedBy;
+
+    await books.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updatedData }
+    );
+
+    res.status(200).send({
+      message: "Book updated successfully",
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to update book",
+      error: error.message,
+    });
+  }
+});
+
+// Delete a book (Owner only)
+app.delete("/books/:id", verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid book ID",
+      });
+    }
+
+    const book = await books.findOne({
+      _id: new ObjectId(id),
+    });
+
+    if (!book) {
+      return res.status(404).send({
+        message: "Book not found",
+      });
+    }
+
+    if (book.addedBy !== req.user.email) {
+      return res.status(403).send({
+        message: "You are not the owner of this book",
+      });
+    }
+
+    await books.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.status(200).send({
+      message: "Book deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to delete book",
+      error: error.message,
+    });
+  }
+});
+
 
 // Home route
 app.get("/", (req, res) => {
