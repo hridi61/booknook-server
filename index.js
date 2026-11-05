@@ -16,6 +16,18 @@ const db = client.db("booknook");
 const books = db.collection("books");
 const borrows = db.collection("borrows");
 
+// Create books collection if it does not exist
+const collections = await db.listCollections().toArray();
+
+const booksCollectionExists = collections.some(
+  (collection) => collection.name === "books"
+);
+
+if (!booksCollectionExists) {
+  await db.createCollection("books");
+  console.log("Books Collection Created Successfully!");
+}
+
 app.get("/", (req, res) => {
   res.send("BookNook Server is Running!");
 });
