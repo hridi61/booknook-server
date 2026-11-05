@@ -10,6 +10,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Health Check API
+app.get("/api/health", (req, res) => {
+  res.status(200).send({
+    status: "ok",
+    message: "BookNook Server is healthy",
+  });
+});
+
 const client = new MongoClient(process.env.MONGODB_URI);
 
 const db = client.db("booknook");
