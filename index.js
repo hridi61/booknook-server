@@ -16,6 +16,31 @@ const db = client.db("booknook");
 const books = db.collection("books");
 const borrows = db.collection("borrows");
 
+// Get all books
+app.get("/books", async (req, res) => {
+  try {
+    const query = {};
+
+    // Filter books by user
+    if (req.query.addedBy) {
+      query.addedBy = req.query.addedBy;
+    }
+
+    const result = await books
+      .find(query)
+      .sort({ _id: -1 })
+      .limit(20)
+      .toArray();
+
+    res.status(200).send(result);
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to get books",
+      error: error.message,
+    });
+  }
+});
+
 // Create books collection if it does not exist
 const collections = await db.listCollections().toArray();
 
