@@ -2,7 +2,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 
 const app = express();
 
@@ -41,18 +41,62 @@ app.get("/books", async (req, res) => {
   }
 });
 
-// Create books collection if it does not exist
-const collections = await db.listCollections().toArray();
+// Get a single book by ID
+app.get("/books/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
 
-const booksCollectionExists = collections.some(
-  (collection) => collection.name === "books"
-);
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid book ID",
+      });
+    }
 
-if (!booksCollectionExists) {
-  await db.createCollection("books");
-  console.log("Books Collection Created Successfully!");
-}
+    const book = await books.findOne({
+      _id: new ObjectId(id),
+    });
 
+    if (!book) {
+      return res.status(404).send({
+        message: "Book not found",
+      });
+    }
+
+    res.status(200).send(book);
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to get book",
+      error: error.message,
+    });
+  }
+});
+
+// Add a new book
+app.post("/books", async (req, res) => {
+  try {
+    const newBook = req.body;
+
+    if (!newBook || Object.keys(newBook).length === 0) {
+      return res.status(400).send({
+        message: "Book information is required",
+      });
+    }
+
+    const result = await books.insertOne(newBook);
+
+    res.status(201).send({
+      message: "Book added successfully",
+      insertedId: result.insertedId,
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to add book",
+      error: error.message,
+    });
+  }
+});
+
+// Home route
 app.get("/", (req, res) => {
   res.send("BookNook Server is Running!");
 });
@@ -63,6 +107,18 @@ try {
   await client.connect();
 
   console.log("MongoDB Connected Successfully!");
+
+  // Create books collection if it does not exist
+  const collections = await db.listCollections().toArray();
+
+  const booksCollectionExists = collections.some(
+    (collection) => collection.name === "books"
+  );
+
+  if (!booksCollectionExists) {
+    await db.createCollection("books");
+    console.log("Books Collection Created Successfully!");
+  }
 
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
