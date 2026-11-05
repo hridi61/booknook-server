@@ -56,14 +56,18 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-// Get all books
+// Get all books with filters
 app.get("/books", async (req, res) => {
   try {
     const query = {};
 
-    // Filter books by user
     if (req.query.addedBy) {
       query.addedBy = req.query.addedBy;
+    }
+
+    // Filter by category
+    if (req.query.category) {
+      query.category = req.query.category;
     }
 
     const result = await books
@@ -114,13 +118,27 @@ app.get("/books/:id", verifyToken, async (req, res) => {
 // Add a new book
 app.post("/books", verifyToken, async (req, res) => {
   try {
-    newBook.addedBy = req.user.email;
+    const newBook = req.body;
 
     if (!newBook || Object.keys(newBook).length === 0) {
       return res.status(400).send({
         message: "Book information is required",
       });
     }
+
+    if (
+      typeof newBook.title !== "string" ||
+      !newBook.title.trim() ||
+      typeof newBook.category !== "string" ||
+      typeof newBook.copies !== "number" ||
+      newBook.copies < 0
+    ) {
+      return res.status(400).send({
+        message: "Invalid book information",
+      });
+    }
+
+    newBook.addedBy = req.user.email;
 
     const result = await books.insertOne(newBook);
 
@@ -136,7 +154,6 @@ app.post("/books", verifyToken, async (req, res) => {
   }
 });
 
-
 // Update a book (Owner only)
 app.patch("/books/:id", verifyToken, async (req, res) => {
   try {
@@ -145,6 +162,21 @@ app.patch("/books/:id", verifyToken, async (req, res) => {
     if (!ObjectId.isValid(id)) {
       return res.status(400).send({
         message: "Invalid book ID",
+      });
+    }
+
+    if (!req.body || Object.keys(req.body).length === 0) {
+      return res.status(400).send({
+        message: "Update information is required",
+      });
+    }
+
+    if (
+      req.body.copies !== undefined &&
+      (typeof req.body.copies !== "number" || req.body.copies < 0)
+    ) {
+      return res.status(400).send({
+        message: "Invalid copies value",
       });
     }
 
@@ -227,7 +259,6 @@ app.delete("/books/:id", verifyToken, async (req, res) => {
   }
 });
 
-
 // Borrow a book
 app.post("/borrows", verifyToken, async (req, res) => {
   try {
@@ -240,7 +271,6 @@ app.post("/borrows", verifyToken, async (req, res) => {
       });
     }
 
-    // Find the book
     const book = await books.findOne({
       _id: new ObjectId(bookId),
     });
@@ -251,14 +281,12 @@ app.post("/borrows", verifyToken, async (req, res) => {
       });
     }
 
-    // Check available copies
     if (book.copies <= 0) {
       return res.status(400).send({
         message: "No copies available",
       });
     }
 
-    // Check duplicate borrow
     const existingBorrow = await borrows.findOne({
       bookId: bookId,
       borrowedBy: userEmail,
@@ -270,7 +298,6 @@ app.post("/borrows", verifyToken, async (req, res) => {
       });
     }
 
-    // Decrease available copies
     const updateResult = await books.updateOne(
       {
         _id: new ObjectId(bookId),
@@ -287,7 +314,6 @@ app.post("/borrows", verifyToken, async (req, res) => {
       });
     }
 
-    // Save borrow information
     const borrowInfo = {
       bookId: bookId,
       bookTitle: book.title,
@@ -309,7 +335,75 @@ app.post("/borrows", verifyToken, async (req, res) => {
   }
 });
 
+// Get borrowed books of logged-in user
+app.get("/borrows", verifyToken, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
 
+    const result = await borrows
+      .find({ borrowedBy: userEmail })
+      .sort({ borrowedAt: -1 })
+      .toArray();
+
+    res.status(200).send(result);
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to get borrowed books",
+      error: error.message,
+    });
+  }
+});
+
+// Return a borrowed book
+app.delete("/borrows/:id", verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid borrow ID",
+      });
+    }
+
+    const borrow = await borrows.findOne({
+      _id: new ObjectId(id),
+      borrowedBy: req.user.email,
+    });
+
+    if (!borrow) {
+      return res.status(404).send({
+        message: "Borrow record not found",
+      });
+    }
+
+    const deleteResult = await borrows.deleteOne({
+      _id: new ObjectId(id),
+      borrowedBy: req.user.email,
+    });
+
+    if (deleteResult.deletedCount === 0) {
+      return res.status(404).send({
+        message: "Borrow record not found",
+      });
+    }
+
+    if (ObjectId.isValid(borrow.bookId)) {
+      await books.updateOne(
+        { _id: new ObjectId(borrow.bookId) },
+        { $inc: { copies: 1 } }
+      );
+    }
+
+    res.status(200).send({
+      message: "Book returned successfully",
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: "Failed to return book",
+      error: error.message,
+    });
+  }
+});
 
 // Home route
 app.get("/", (req, res) => {
